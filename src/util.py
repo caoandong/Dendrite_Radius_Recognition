@@ -1,10 +1,20 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.io
+import pickle
 import os
+import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn.utils import shuffle
 
-def load_data(data_path="../data/simulations/data/data_radius.npy"):
+def plot_hist(data, start=0, end=500, num_step=50):
+    df = pd.DataFrame({"data":data})
+    bins= np.linspace(start, end, num=num_step)
+    plt.hist(df.values, bins=bins, edgecolor="k")
+    plt.xticks(bins)
+    plt.show()
+
+def load_data(data_path="../data/simulations/data/data_depth.npy"):
     data = np.load(data_path)
     X = np.array(data[:,0])
     y = np.array(data[:,1])
@@ -33,7 +43,7 @@ def get_mat_data(mat, start=None, diff=100, step=16, z_px=9, num_sep=16, num_fig
             mat_seg.append(mat[:,:,z_idx])
         ret_mat_tmp = mat_seg
         if get_proj:
-            ret_mat_tmp = np.amax(np.array(mat_seg), axis=-1)
+            ret_mat_tmp = np.amax(np.array(mat_seg), axis=0)
         ret_mat.append(ret_mat_tmp)
         depth_dict[str(depth)] = ret_mat_tmp
     return ret_mat, depth_dict
@@ -58,6 +68,7 @@ def get_data_rad_depth(pathname="../data/simulations/", dz=0.45, max_num_file=10
     data_depth = []
     mat_dict = read_mat_path(pathname=pathname, dz=dz, max_num_file=max_num_file)
     num_dict = len(mat_dict)
+    print('mat_dict size: ', num_dict)
     for rad, mat in mat_dict.items():
         mat_data, depth_dict = get_mat_data(mat, z_px=z_px)
         for depth, mat in depth_dict.items():
@@ -66,11 +77,61 @@ def get_data_rad_depth(pathname="../data/simulations/", dz=0.45, max_num_file=10
             data_rad.append([mat_data[j], float(rad)])
     return data_rad, data_depth
 
-def generate_data(save_path="../data/simulations/data/", max_num_file=None):
-    data_rad, data_depth = get_data_rad_depth(max_num_file=max_num_file)
-    print("data_rad: ", len(data_rad), " data_depth: ", len(data_depth))
-    np.save(save_path + 'data_radius.npy', data_rad)
-    np.save(save_path + 'data_depth.npy', data_depth)
+def save_data(data, save_path, file_name, len_data=None, split_step=100, delim=";"):
+    file = None
+    fname = None
+    file_cnt = 0
+    count = 0
+    if len_data is None:
+        len_data = len(data)
+    for i in range(len_data):
+        if count == 0:
+            # Create a new file
+            file_cnt += 1
+            fname = save_path + file_name + "_" + str(file_cnt) + ".txt"
+            file = open(fname, "w")
+            print("Start writing new file: "+fname)
+        elif count == split_step:
+            file.close()
+            print("Finished writing file: "+fname)
+            count = 0
+            continue
+        count += 1
+        img, label = data[i]
+        img_txt = str(img.tolist())
+        file.write(str(label)+delim+img_txt+'\n')
+    if file is not None:
+        file.close()
+        print("Finished writing file: "+fname)
+
+def split_test_train(data, test_prop=0.2):
+    len_data = len(data)
+    idx = shuffle(np.arange(len_data), random_state=0).tolist()
+    split_idx = int(len_data*test_prop)
+    test_idx = idx[:split_idx]
+    train_idx = idx[split_idx:]
+    test_data = [data[i] for i in test_idx]
+    train_data = [data[i] for i in train_idx]
+    return test_data, train_data, split_idx
+
+def generate_data(save_path="../data/simulations/data/", max_num_file=None, test_prop=0.2):
+    data_rad, data_depth  = get_data_rad_depth(max_num_file=max_num_file)
+    rad_test, rad_train, rad_split_idx = split_test_train(data_rad)
+    depth_test, depth_train, depth_split_idx = split_test_train(data_depth)
+    len_rad = len(data_rad)
+    len_rad_test = len(rad_test)
+    len_rad_train = len(rad_train)
+    len_depth = len(data_depth)
+    len_depth_test = len(depth_test)
+    len_depth_train = len(depth_train)
+    print("rad test: ", len_rad_test, " rad train: ", len_rad_train, ' split idx: ', rad_split_idx)
+    print("depth test: ", len_depth_test, " depth train: ", len_depth_train, ' split idx: ', depth_split_idx)
+    np.save(save_path + "data_radius_test.npy", rad_test)
+    # save_data(rad_test, save_path, "data_radius_test", len_rad_test)
+    save_data(rad_train, save_path, "data_radius_train", len_rad_train)
+    np.save(save_path + "data_depth_test.npy", depth_test)
+    # save_data(depth_test, save_path, "data_depth_test", len_depth_test)
+    save_data(depth_train, save_path, "data_depth_train", len_depth_train)
     print("Done.")
 
 # generate_data()
